@@ -1,4 +1,4 @@
-python-telegram-bot==20.7
+aiogram>=3.0.0
 flask
 requests
 beautifulsoup4
