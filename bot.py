@@ -25,20 +25,19 @@ from aiogram.fsm.storage.memory import MemoryStorage
 # CONFIG
 # =========================================================
 
-BOT_TOKEN = os.getenv("8751926796:AAE_MuRxUzB3ZnjMHQ45TLs3zhyWauK_tN0")
+BOT_TOKEN = os.getenv("8751926796:AAEf26G0AmAxwojpx8lWC_P50c855nOQ_Rw")
 
 BASE_URL = "https://certificate.comillaboard.gov.bd"
 
 PORT = int(os.getenv("PORT", "10000"))
 
-# Telegram user IDs allowed to perform lookups.
-# Example Render variable:
+# Optional access control
+# Example:
 # ALLOWED_USER_IDS=123456789,987654321
+
 ALLOWED_USER_IDS = set()
 
-raw_ids = os.getenv("ALLOWED_USER_IDS", "")
-
-for item in raw_ids.split(","):
+for item in os.getenv("ALLOWED_USER_IDS", "").split(","):
     item = item.strip()
 
     if item.isdigit():
@@ -80,7 +79,7 @@ def run_flask():
 
 
 # =========================================================
-# HTTP
+# REQUEST HEADERS
 # =========================================================
 
 HEADERS = {
@@ -93,8 +92,7 @@ HEADERS = {
     ),
     "Accept": (
         "text/html,application/xhtml+xml,"
-        "application/xml;q=0.9,image/avif,"
-        "image/webp,*/*;q=0.8"
+        "application/xml;q=0.9,*/*;q=0.8"
     ),
     "Accept-Language": "en-US,en;q=0.9"
 }
@@ -109,7 +107,10 @@ if not BOT_TOKEN:
         "BOT_TOKEN environment variable is missing."
     )
 
-bot = Bot(token=BOT_TOKEN)
+
+bot = Bot(
+    token=BOT_TOKEN
+)
 
 dp = Dispatcher(
     storage=MemoryStorage()
@@ -121,21 +122,31 @@ dp = Dispatcher(
 # =========================================================
 
 class StudentSearch(StatesGroup):
+
     waiting_exam = State()
+
     waiting_year = State()
+
     waiting_roll = State()
 
 
 # =========================================================
-# AUTHORIZATION
+# ACCESS CHECK
 # =========================================================
 
 def is_allowed(user_id: int) -> bool:
+
+    # If no IDs are configured,
+    # bot remains open.
+
+    if not ALLOWED_USER_IDS:
+        return True
+
     return user_id in ALLOWED_USER_IDS
 
 
 # =========================================================
-# EXAM BUTTONS
+# EXAM KEYBOARD
 # =========================================================
 
 def exam_keyboard():
@@ -157,50 +168,49 @@ def exam_keyboard():
 
 
 # =========================================================
-# YEAR BUTTONS
+# YEAR KEYBOARD
 # =========================================================
 
 def year_keyboard():
 
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="2026",
-                    callback_data="year_2026"
-                ),
-                InlineKeyboardButton(
-                    text="2025",
-                    callback_data="year_2025"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="2024",
-                    callback_data="year_2024"
-                ),
-                InlineKeyboardButton(
-                    text="2023",
-                    callback_data="year_2023"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="2022",
-                    callback_data="year_2022"
-                ),
-                InlineKeyboardButton(
-                    text="2021",
-                    callback_data="year_2021"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="2020",
-                    callback_data="year_2020"
-                )
-            ]
+    years = [
+        "2026",
+        "2025",
+        "2024",
+        "2023",
+        "2022",
+        "2021",
+        "2020"
+    ]
+
+    rows = []
+
+    for i in range(
+        0,
+        len(years),
+        2
+    ):
+
+        row = [
+            InlineKeyboardButton(
+                text=years[i],
+                callback_data=f"year_{years[i]}"
+            )
         ]
+
+        if i + 1 < len(years):
+
+            row.append(
+                InlineKeyboardButton(
+                    text=years[i + 1],
+                    callback_data=f"year_{years[i + 1]}"
+                )
+            )
+
+        rows.append(row)
+
+    return InlineKeyboardMarkup(
+        inline_keyboard=rows
     )
 
 
@@ -216,11 +226,13 @@ async def start_command(
 
     await state.clear()
 
-    if not is_allowed(message.from_user.id):
+    if not is_allowed(
+        message.from_user.id
+    ):
 
         await message.answer(
             "🔒 <b>Access Restricted</b>\n\n"
-            "এই bot-এ lookup করার অনুমতি আপনার নেই.",
+            "এই bot-এ lookup করার অনুমতি নেই।",
             parse_mode="HTML"
         )
 
@@ -253,7 +265,9 @@ async def exam_selected(
     state: FSMContext
 ):
 
-    if not is_allowed(callback.from_user.id):
+    if not is_allowed(
+        callback.from_user.id
+    ):
 
         await callback.answer(
             "Access denied.",
@@ -267,7 +281,10 @@ async def exam_selected(
         ""
     ).upper()
 
-    if exam not in ("SSC", "HSC"):
+    if exam not in (
+        "SSC",
+        "HSC"
+    ):
 
         await callback.answer(
             "Invalid exam.",
@@ -308,7 +325,9 @@ async def year_selected(
     state: FSMContext
 ):
 
-    if not is_allowed(callback.from_user.id):
+    if not is_allowed(
+        callback.from_user.id
+    ):
 
         await callback.answer(
             "Access denied.",
@@ -394,20 +413,24 @@ def clean_text(value):
 
 
 # =========================================================
-# FIND FIELD FROM STUDENT SECTION
+# FIND FIELD
 # =========================================================
 
-def find_field_value(section, label):
+def find_field_value(
+    section,
+    label
+):
 
-    label_lower = label.lower()
-
-    # -----------------------------------------------------
-    # Method 1:
-    # Find label text and its nearby input
-    # -----------------------------------------------------
+    target = label.lower()
 
     for tag in section.find_all(
-        ["label", "td", "th", "div", "span"]
+        [
+            "label",
+            "td",
+            "th",
+            "div",
+            "span"
+        ]
     ):
 
         text = clean_text(
@@ -417,44 +440,47 @@ def find_field_value(section, label):
             )
         )
 
-        if label_lower not in text.lower():
+        if target not in text.lower():
             continue
 
-        # Search input inside same tag
-        inp = tag.find("input")
+        candidates = []
+
+        inp = tag.find(
+            "input"
+        )
 
         if inp:
-
-            value = clean_text(
-                inp.get("value", "")
+            candidates.append(
+                inp
             )
 
-            if value:
-                return value
+        if tag.parent:
 
-        # Search input in parent
-        parent = tag.parent
-
-        if parent:
-
-            inp = parent.find("input")
+            inp = tag.parent.find(
+                "input"
+            )
 
             if inp:
-
-                value = clean_text(
-                    inp.get("value", "")
+                candidates.append(
+                    inp
                 )
 
-                if value:
-                    return value
-
-        # Search next input
-        inp = tag.find_next("input")
+        inp = tag.find_next(
+            "input"
+        )
 
         if inp:
+            candidates.append(
+                inp
+            )
+
+        for candidate in candidates:
 
             value = clean_text(
-                inp.get("value", "")
+                candidate.get(
+                    "value",
+                    ""
+                )
             )
 
             if value:
@@ -493,7 +519,8 @@ def fetch_student(
         HEADERS
     )
 
-    # Establish normal session
+    # Establish website session
+
     try:
 
         session.get(
@@ -506,6 +533,7 @@ def fetch_student(
         pass
 
     # Actual request
+
     response = session.get(
         url,
         timeout=20
@@ -518,13 +546,13 @@ def fetch_student(
         "html.parser"
     )
 
-    # -----------------------------------------------------
     # Find Student Information section
-    # -----------------------------------------------------
 
     student_section = None
 
-    for fieldset in soup.find_all("fieldset"):
+    for fieldset in soup.find_all(
+        "fieldset"
+    ):
 
         text = clean_text(
             fieldset.get_text(
@@ -533,9 +561,13 @@ def fetch_student(
             )
         )
 
-        if "Student Information" in text:
+        if (
+            "Student Information"
+            in text
+        ):
 
             student_section = fieldset
+
             break
 
     if student_section is None:
@@ -547,22 +579,23 @@ def fetch_student(
             )
         )
 
-        if "Student Information" not in page_text:
+        if (
+            "Student Information"
+            not in page_text
+        ):
 
             return None
 
         student_section = soup
 
-    # -----------------------------------------------------
-    # Get fields by labels
-    # -----------------------------------------------------
+    # Extract only required fields
 
     result = {
 
         "Exam": find_field_value(
             student_section,
             "Exam"
-        ),
+        ) or exam.upper(),
 
         "Board": find_field_value(
             student_section,
@@ -572,17 +605,18 @@ def fetch_student(
         "Roll": find_field_value(
             student_section,
             "Roll Number"
-        ),
+        ) or roll,
 
         "Passing Year": find_field_value(
             student_section,
             "Passing Year"
-        ),
+        ) or year,
 
-        "Registration Number": find_field_value(
-            student_section,
-            "Registration Number"
-        ),
+        "Registration Number":
+            find_field_value(
+                student_section,
+                "Registration Number"
+            ),
 
         "Session": find_field_value(
             student_section,
@@ -594,25 +628,28 @@ def fetch_student(
             "Name"
         ),
 
-        "Father's Name": find_field_value(
-            student_section,
-            "Father's Name"
-        ),
+        "Father's Name":
+            find_field_value(
+                student_section,
+                "Father's Name"
+            ),
 
-        "Mother's Name": find_field_value(
-            student_section,
-            "Mother's Name"
-        ),
+        "Mother's Name":
+            find_field_value(
+                student_section,
+                "Mother's Name"
+            ),
 
         "Sex": find_field_value(
             student_section,
             "Sex"
         ),
 
-        "Date of Birth": find_field_value(
-            student_section,
-            "Date of Birth"
-        ),
+        "Date of Birth":
+            find_field_value(
+                student_section,
+                "Date of Birth"
+            ),
 
         "GPA": find_field_value(
             student_section,
@@ -620,35 +657,22 @@ def fetch_student(
         )
     }
 
-    # -----------------------------------------------------
-    # Some pages may have empty labels.
-    # Use requested values for known fields.
-    # -----------------------------------------------------
-
-    if not result["Exam"]:
-        result["Exam"] = exam.upper()
-
-    if not result["Roll"]:
-        result["Roll"] = roll
-
-    if not result["Passing Year"]:
-        result["Passing Year"] = year
-
-    # -----------------------------------------------------
-    # If there is no useful student data
-    # -----------------------------------------------------
+    # If no meaningful student record
 
     useful_fields = [
-        result["Registration Number"],
-        result["Session"],
-        result["Name"],
-        result["Father's Name"],
-        result["Mother's Name"],
-        result["Sex"],
-        result["GPA"]
+        "Registration Number",
+        "Session",
+        "Name",
+        "Father's Name",
+        "Mother's Name",
+        "Sex",
+        "GPA"
     ]
 
-    if not any(useful_fields):
+    if not any(
+        result[field]
+        for field in useful_fields
+    ):
 
         return None
 
@@ -661,37 +685,75 @@ def fetch_student(
 
 def format_result(result):
 
-    def val(key):
-        value = result.get(key, "")
-        return value if value else "N/A"
+    def value(key):
+
+        data = result.get(
+            key,
+            ""
+        )
+
+        if data:
+            return data
+
+        return "N/A"
+
+    # Keep these outside f-string expressions.
+    # This avoids Python 3.10 backslash errors.
+
+    father_name = value(
+        "Father's Name"
+    )
+
+    mother_name = value(
+        "Mother's Name"
+    )
 
     return (
         "🎓 <b>Student Information</b>\n"
         "━━━━━━━━━━━━━━━━━━\n\n"
 
-        f"📘 <b>Exam:</b> {val('Exam')}\n"
-        f"🏫 <b>Board:</b> {val('Board')}\n"
-        f"🔢 <b>Roll:</b> {val('Roll')}\n"
-        f"📅 <b>Passing Year:</b> {val('Passing Year')}\n"
+        f"📘 <b>Exam:</b> "
+        f"{value('Exam')}\n"
+
+        f"🏫 <b>Board:</b> "
+        f"{value('Board')}\n"
+
+        f"🔢 <b>Roll:</b> "
+        f"{value('Roll')}\n"
+
+        f"📅 <b>Passing Year:</b> "
+        f"{value('Passing Year')}\n"
+
         f"🪪 <b>Registration Number:</b> "
-        f"{val('Registration Number')}\n"
-        f"📚 <b>Session:</b> {val('Session')}\n"
-        f"👤 <b>Name:</b> {val('Name')}\n"
+        f"{value('Registration Number')}\n"
+
+        f"📚 <b>Session:</b> "
+        f"{value('Session')}\n"
+
+        f"👤 <b>Name:</b> "
+        f"{value('Name')}\n"
+
         f"👨 <b>Father's Name:</b> "
-        f"{val(\"Father's Name\")}\n"
+        f"{father_name}\n"
+
         f"👩 <b>Mother's Name:</b> "
-        f"{val(\"Mother's Name\")}\n"
-        f"⚧ <b>Sex:</b> {val('Sex')}\n"
+        f"{mother_name}\n"
+
+        f"⚧ <b>Sex:</b> "
+        f"{value('Sex')}\n"
+
         f"🎂 <b>Date of Birth:</b> "
-        f"{val('Date of Birth')}\n"
-        f"📊 <b>GPA:</b> {val('GPA')}\n\n"
+        f"{value('Date of Birth')}\n"
+
+        f"📊 <b>GPA:</b> "
+        f"{value('GPA')}\n\n"
 
         "━━━━━━━━━━━━━━━━━━"
     )
 
 
 # =========================================================
-# ROLL INPUT
+# RECEIVE ROLL
 # =========================================================
 
 @dp.message(
@@ -702,7 +764,9 @@ async def receive_roll(
     state: FSMContext
 ):
 
-    if not is_allowed(message.from_user.id):
+    if not is_allowed(
+        message.from_user.id
+    ):
 
         await state.clear()
 
@@ -712,17 +776,12 @@ async def receive_roll(
 
         return
 
-    if not message.text:
+    roll = (
+        message.text or ""
+    ).strip()
 
-        await message.answer(
-            "❌ Roll Number লিখুন।"
-        )
+    # Roll validation
 
-        return
-
-    roll = message.text.strip()
-
-    # Numbers only
     if not re.fullmatch(
         r"\d{4,8}",
         roll
@@ -739,21 +798,15 @@ async def receive_roll(
 
     data = await state.get_data()
 
-    exam = data.get("exam")
-    year = data.get("year")
+    exam = data.get(
+        "exam"
+    )
 
-    if exam not in ("SSC", "HSC"):
+    year = data.get(
+        "year"
+    )
 
-        await state.clear()
-
-        await message.answer(
-            "⚠️ Exam নির্বাচন করা হয়নি।\n"
-            "আবার /start দিন।"
-        )
-
-        return
-
-    if year not in {
+    allowed_years = {
         "2020",
         "2021",
         "2022",
@@ -761,19 +814,26 @@ async def receive_roll(
         "2024",
         "2025",
         "2026"
-    }:
+    }
+
+    if (
+        exam not in (
+            "SSC",
+            "HSC"
+        )
+        or year not in allowed_years
+    ):
 
         await state.clear()
 
         await message.answer(
-            "⚠️ সঠিক Passing Year নির্বাচন করা হয়নি।"
+            "⚠️ Session expired.\n\n"
+            "আবার /start দিন।"
         )
 
         return
 
-    # -----------------------------------------------------
-    # Loading
-    # -----------------------------------------------------
+    # Loading message
 
     loading = await message.answer(
         "🔎 <b>Searching...</b>\n\n"
@@ -803,16 +863,14 @@ async def receive_roll(
                 parse_mode="HTML"
             )
 
-            return
+        else:
 
-        result_text = format_result(
-            result
-        )
-
-        await loading.edit_text(
-            result_text,
-            parse_mode="HTML"
-        )
+            await loading.edit_text(
+                format_result(
+                    result
+                ),
+                parse_mode="HTML"
+            )
 
     except requests.exceptions.Timeout:
 
@@ -826,7 +884,8 @@ async def receive_roll(
 
         await loading.edit_text(
             "🌐 <b>Connection Error</b>\n\n"
-            "Certificate server-এর সাথে সংযোগ করা যাচ্ছে না।",
+            "Certificate server-এর সাথে "
+            "সংযোগ করা যাচ্ছে না।",
             parse_mode="HTML"
         )
 
@@ -841,7 +900,7 @@ async def receive_roll(
     except Exception as error:
 
         logging.exception(
-            "Unexpected error: %s",
+            "Lookup error: %s",
             error
         )
 
@@ -866,7 +925,8 @@ async def unknown_message(
 ):
 
     await message.answer(
-        "🤖 নতুন করে শুরু করতে <b>/start</b> লিখুন।",
+        "🤖 নতুন করে শুরু করতে "
+        "<b>/start</b> দিন।",
         parse_mode="HTML"
     )
 
@@ -877,7 +937,8 @@ async def unknown_message(
 
 async def main():
 
-    # Flask server
+    # Start Flask
+
     flask_thread = threading.Thread(
         target=run_flask,
         daemon=True
@@ -891,8 +952,10 @@ async def main():
     )
 
     logging.info(
-        "Telegram bot starting..."
+        "Bot Running..."
     )
+
+    # Start Telegram polling
 
     await dp.start_polling(
         bot
