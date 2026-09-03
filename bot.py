@@ -1,6 +1,9 @@
 import html
 import io
+import os
 import re
+from threading import Thread
+from flask import Flask
 import requests
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -14,6 +17,25 @@ from telegram.ext import (
     filters,
 )
 
+# Render Port Binding Keep-Alive Server
+web_app = Flask('')
+
+@web_app.route('/')
+def home():
+    return "Bot is running perfectly on Render!"
+
+def run_web():
+    port = int(os.environ.get("PORT", 8080))
+    web_app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = Thread(target=run_web)
+    t.daemon = True
+    t.start()
+
+keep_alive()
+
+# Configuration
 BOT_TOKEN = "8575875186:AAHlK3khfZlfEpd8BSWIZtVksX4xYC3FuwA"
 DEFAULT_CRM_USERNAME = "bhedarganj"
 
@@ -145,7 +167,7 @@ def get_payment_issue_sub_keyboard():
     ]
     return InlineKeyboardMarkup(keyboard)
 
-# ----------------- Step 1 & 2: নির্ভুল ডুয়াল লগইন -----------------
+# Dual-Login Handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global is_logged_in
     is_logged_in = False
@@ -178,16 +200,14 @@ async def receive_auth_password(update: Update, context: ContextTypes.DEFAULT_TY
     auth_pass = update.message.text.strip()
     crm_pass = context.user_data.get("crm_pass")
     
-    wait_msg = await update.message.reply_text("উভয় ধাপে প্রমাণীকরণ সম্পন্ন করা হচ্ছে, দয়া করে অপেক্ষা করুন...")
+    wait_msg = await update.message.reply_text("উভয় ধাপে প্রমাণীকরণ সম্পন্ন করা হচ্ছে, দয়া করে অপেক্ষা করুন...")
     
     try:
         session.cookies.clear()
         
-        # ১. CRM Login
         crm_payload = {"username": DEFAULT_CRM_USERNAME, "password": crm_pass, "submit": "Login"}
         session.post(LOGIN_URL, data=crm_payload, timeout=15)
         
-        # ২. Advance Auth Login
         advance_payload = {"auth_password": auth_pass, "verify": "Verify"}
         session.post(ADVANCE_AUTH_URL, data=advance_payload, timeout=15)
         
@@ -196,7 +216,7 @@ async def receive_auth_password(update: Update, context: ContextTypes.DEFAULT_TY
         if "Logout" in home_check.text or "Current Status" in home_check.text:
             is_logged_in = True
             await wait_msg.edit_text(
-                "🎉 <b>সিআরএম এবং অ্যাডভান্স লগইন সফল হয়েছে!</b>\n\nনিচের ড্যাশবোর্ড থেকে কাজ শুরু করুন অথবা সরাসরি গ্রাহক আইডি বা রেঞ্জ লিখে পাঠান:",
+                "🎉 <b>সিআরএম এবং অ্যাডভান্স লগইন সফল হয়েছে!</b>\n\nনিচের ড্যাশবোর্ড থেকে সেবা নির্বাচন করুন অথবা সরাসরি গ্রাহক আইডি বা রেঞ্জ লিখে পাঠান:",
                 parse_mode="HTML",
                 reply_markup=get_full_dashboard_keyboard()
             )
@@ -210,7 +230,7 @@ async def receive_auth_password(update: Update, context: ContextTypes.DEFAULT_TY
         
     return ConversationHandler.END
 
-# ----------------- Client Search -----------------
+# Search Logic
 async def search_prompt_btn(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -287,7 +307,6 @@ async def execute_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     raw_text = update.message.text.strip()
 
-    # ১. রেঞ্জ সার্চ
     range_match = re.match(r"^(\d+)\s*[-–—]\s*(\d+)$", raw_text)
     if range_match:
         start_id = int(range_match.group(1))
@@ -371,7 +390,6 @@ async def execute_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_document(document=file_bytes, caption=f"📄 Range Search ({start_id} to {end_id})")
         return
 
-    # ২. সিঙ্গেল সার্চ
     input_text = raw_text
     if not input_text.isdigit():
         await update.message.reply_text("সঠিক আইডি, মোবাইল নম্বর অথবা রেঞ্জ দিন।")
@@ -414,7 +432,7 @@ async def execute_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await wait_msg.edit_text(msg_text, parse_mode="HTML", reply_markup=reply_markup)
 
-# ----------------- Dashboard & Lists -----------------
+# Status & Lists
 async def view_live_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -489,7 +507,7 @@ async def handle_user_lists_fetch(update: Update, context: ContextTypes.DEFAULT_
     except Exception as e:
         await wait_msg.edit_text(f"⚠️ ত্রুটি: {clean(e)}")
 
-# ----------------- New Client Handlers -----------------
+# New Client Operations
 async def new_client_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -598,7 +616,7 @@ async def handle_approved_list(update: Update, context: ContextTypes.DEFAULT_TYP
     except Exception as e:
         await wait_msg.edit_text(f"⚠️ ত্রুটি: {clean(e)}")
 
-# ----------------- Client Management Actions -----------------
+# Client Management Actions
 async def client_actions_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -651,7 +669,7 @@ async def act_process_deposit(update: Update, context: ContextTypes.DEFAULT_TYPE
         await wait_msg.edit_text(f"⚠️ ত্রুটি: {clean(e)}")
     return ConversationHandler.END
 
-# ----------------- Invoices & Today's Payments -----------------
+# Invoices
 async def invoice_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -680,7 +698,7 @@ async def handle_today_payments(update: Update, context: ContextTypes.DEFAULT_TY
     except Exception as e:
         await wait_msg.edit_text(f"⚠️ ত্রুটি: {clean(e)}")
 
-# ----------------- Area Management -----------------
+# Area Management
 async def area_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -743,7 +761,7 @@ async def execute_area_client_update(update: Update, context: ContextTypes.DEFAU
         await wait_msg.edit_text(f"⚠️ ত্রুটি: {clean(e)}")
     return ConversationHandler.END
 
-# ----------------- Payment Issues -----------------
+# Payment Issues
 async def payment_issue_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -821,7 +839,7 @@ async def pi_submit_final(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     return ConversationHandler.END
 
-# ----------------- Card Order, Migration, WiFi & Complain -----------------
+# Additional Services
 async def card_order_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -933,7 +951,7 @@ async def wifi_haat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await wait_msg.edit_text(f"⚠️ ত্রুটি: {clean(e)}")
 
-# ----------------- Navigation Callbacks -----------------
+# Nav Callbacks
 async def menu_buttons_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -958,7 +976,7 @@ if __name__ == "__main__":
         .build()
     )
 
-    # কনভার্সেশন ১: লগইন হ্যান্ডলার
+    # 1. Login Handler
     login_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(button_click, pattern="^select_user$")],
         states={
@@ -969,7 +987,7 @@ if __name__ == "__main__":
         per_message=False
     )
 
-    # কনভার্সেশন ২: New Client ফর্ম হ্যান্ডলার
+    # 2. New Client Form Handler
     nc_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(new_client_start, pattern="^nc_add_start$")],
         states={
@@ -983,7 +1001,7 @@ if __name__ == "__main__":
         per_message=False
     )
 
-    # কনভার্সেশন ৩: Actions (Deposit / Renew / MAC)
+    # 3. Actions Handler
     action_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(act_trigger, pattern="^act_")],
         states={
@@ -994,7 +1012,7 @@ if __name__ == "__main__":
         per_message=False
     )
 
-    # কনভার্সেশন ৪: Area Migration
+    # 4. Area Migration Handler
     area_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(area_take_client_id, pattern="^setar_")],
         states={
@@ -1004,7 +1022,7 @@ if __name__ == "__main__":
         per_message=False
     )
 
-    # কনভার্সেশন ৫: Payment Issue
+    # 5. Payment Issue Handler
     pi_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(pi_take_client_id, pattern="^setpi_")],
         states={
@@ -1015,7 +1033,7 @@ if __name__ == "__main__":
         per_message=False
     )
 
-    # কনভার্সেশন ৬: Package Migration
+    # 6. Package Migration Handler
     migrate_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(pkg_migration_start, pattern="^btn_pkg_migration$")],
         states={
@@ -1025,7 +1043,7 @@ if __name__ == "__main__":
         per_message=False
     )
 
-    # কনভার্সেশন ৭: Complain Ticket
+    # 7. Complain Ticket Handler
     complain_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(comp_add_ticket_start, pattern="^comp_add_ticket$")],
         states={
@@ -1066,7 +1084,6 @@ if __name__ == "__main__":
     app.add_handler(CallbackQueryHandler(wifi_haat_handler, pattern="^btn_wifi_haat$"))
     app.add_handler(CallbackQueryHandler(menu_buttons_info))
 
-    # সার্চ হ্যান্ডলার: চ্যাটে আইডি বা রেঞ্জ দিলে সরাসরি কাজ করবে
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, execute_search))
 
     print("bhedarganj CRM বট সফলভাবে সচল করা হয়েছে...")
