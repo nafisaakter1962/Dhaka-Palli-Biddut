@@ -216,7 +216,7 @@ async def receive_auth_password(update: Update, context: ContextTypes.DEFAULT_TY
         if "Logout" in home_check.text or "Current Status" in home_check.text:
             is_logged_in = True
             await wait_msg.edit_text(
-                "🎉 <b>সিআরএম এবং অ্যাডভান্স লগইন সফল হয়েছে!</b>\n\nনিচের ড্যাশবোর্ড থেকে সেবা নির্বাচন করুন অথবা সরাসরি গ্রাহক আইডি বা রেঞ্জ লিখে পাঠান:",
+                "🎉 <b>সিআরএম এবং অ্যাডভান্স লগইন সফল হয়েছে!</b>\n\nনিচের ড্যাশবোর্ড থেকে সেবা নির্বাচন করুন অথবা সরাসরি গ্রাহক আইডি বা লম্বালম্বিভাবে একাধিক আইডি লিখে পাঠান:",
                 parse_mode="HTML",
                 reply_markup=get_full_dashboard_keyboard()
             )
@@ -238,7 +238,9 @@ async def search_prompt_btn(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔍 <b>গ্রাহক অনুসন্ধান (Search)</b>\n\n"
         "• সিঙ্গেল আইডি: <code>610139</code>\n"
         "• মোবাইল নম্বর: <code>01798041312</code>\n"
-        "• রেঞ্জ সার্চ (সর্বোচ্চ ৫০০): <code>610100-610150</code>\n\n"
+        "• রেঞ্জ সার্চ: <code>610100-610150</code>\n"
+        "• একাধিক আইডি (একটার নিচে একটা লম্বালম্বিভাবে):\n"
+        "<code>627909\n627469\n626127</code>\n\n"
         "অনুগ্রহ করে চ্যাটে লিখে পাঠান:",
         parse_mode="HTML"
     )
@@ -307,92 +309,93 @@ async def execute_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     raw_text = update.message.text.strip()
 
-    range_match = re.match(r"^(\d+)\s*[-–—]\s*(\d+)$", raw_text)
-    if range_match:
-        start_id = int(range_match.group(1))
-        end_id = int(range_match.group(2))
-
-        if start_id > end_id:
-            start_id, end_id = end_id, start_id
-
-        total_count = (end_id - start_id) + 1
-
-        if total_count > 500:
-            await update.message.reply_text("⚠️ আপনি সর্বোচ্চ ৫০০টি আইডির রেঞ্জ সার্চ করতে পারবেন।")
+    # ১. মাল্টিপল আইডি (লম্বালম্বিভাবে একটার নিচে একটা দেওয়া) হ্যান্ডেল করার লজিক
+    lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+    if len(lines) > 1 and all(line.isdigit() for line in lines):
+        total_count = len(lines)
+        if total_count > 50:
+            await update.message.reply_text("⚠️ আপনি একসাথে সর্বোচ্চ ৫০টি আইডি সার্চ করতে পারবেন।")
             return
 
         progress_msg = await update.message.reply_text(
-            f"🔄 <b>রেঞ্জ সার্চ শুরু হয়েছে:</b> <code>{start_id}</code> থেকে <code>{end_id}</code> (মোট {total_count} টি আইডি)\n"
-            f"অনুগ্রহ করে কিছুক্ষণ অপেক্ষা করুন...",
+            f"🔄 <b>বাল্ক আইডি সার্চ শুরু হয়েছে:</b> মোট <code>{total_count}</code> টি আইডি চেক করা হচ্ছে...\n"
+            f"দয়া করে অপেক্ষা করুন...",
             parse_mode="HTML"
         )
 
-        found_users = []
-        online_count = 0
-        offline_count = 0
+        success_count = 0
 
-        for current_id in range(start_id, end_id + 1):
-            data = fetch_raw_details(str(current_id))
+        for uid in lines:
+            data = fetch_raw_details(uid)
             if data == "EXPIRED":
                 is_logged_in = False
                 await progress_msg.edit_text("⚠️ সেশনের মেয়াদ শেষ হয়ে গেছে। আবার /start দিন।")
                 return
+            
             if data:
-                status = data.get("Connection Status", "Offline")
-                is_on = "Online" in status
-                if is_on:
-                    online_count += 1
-                else:
-                    offline_count += 1
+                success_count += 1
+                msg_text = format_single_client_msg(data, uid)
+                mobile = data.get("Mobile")
 
-                found_users.append({
-                    "id": current_id,
-                    "name": data.get("Name", "N/A"),
-                    "mobile": data.get("Mobile", "N/A"),
-                    "status": "Online" if is_on else "Offline",
-                    "package": data.get("Package", "N/A"),
-                    "area": data.get("Area", "N/A"),
-                    "balance": data.get("Balance", "0.00"),
-                    "expired": data.get("Expired Date", "N/A")
-                })
+                reply_markup = None
+                if mobile:
+                    formatted_number = format_bd_phone(mobile)
+                    if formatted_number:
+                        reply_markup = InlineKeyboardMarkup([
+                            [
+                                InlineKeyboardButton("💬 WhatsApp", url=f"https://wa.me/{formatted_number}"),
+                                InlineKeyboardButton("✈️ Telegram", url=f"https://t.me/+{formatted_number}")
+                            ]
+                        ])
 
-        if not found_users:
-            await progress_msg.edit_text(f"❌ রেঞ্জ <code>{start_id}-{end_id}</code> এর মধ্যে কোনো গ্রাহক পাওয়া যায়নি।", parse_mode="HTML")
-            return
+                # প্রতিটি আইডির জন্য আলাদা মেসেজ এবং বাটন পাঠানো হবে
+                await update.message.reply_text(msg_text, parse_mode="HTML", reply_markup=reply_markup)
 
-        file_buffer = io.StringIO()
-        file_buffer.write("Carnival Internet - Bhedarganj Range Search Result\n")
-        file_buffer.write(f"Range: {start_id} to {end_id} | Total Found: {len(found_users)}\n")
-        file_buffer.write("="*75 + "\n\n")
-
-        for u in found_users:
-            file_buffer.write(
-                f"ID: {u['id']} | Name: {u['name']} | Mobile: {u['mobile']}\n"
-                f"Status: {u['status']} | Package: {u['package']} | Area: {u['area']}\n"
-                f"Balance: {u['balance']} Tk | Expire Date: {u['expired']}\n"
-                f"{'-'*75}\n"
-            )
-
-        file_bytes = io.BytesIO(file_buffer.getvalue().encode("utf-8"))
-        file_bytes.name = f"Range_{start_id}_{end_id}.txt"
-
-        summary_text = (
-            f"📊 <b>রেঞ্জ সার্চ ফলাফল:</b>\n"
-            f"──────────────────\n"
-            f"🔢 <b>রেঞ্জ:</b> <code>{start_id}</code> — <code>{end_id}</code>\n"
-            f"👥 <b>মোট প্রাপ্ত গ্রাহক:</b> {len(found_users)} জন\n"
-            f"🟢 <b>Online:</b> {online_count} জন\n"
-            f"🔴 <b>Offline:</b> {offline_count} জন\n\n"
-            f"📁 বিস্তারিত তালিকাটি ফাইলে পাঠানো হলো:"
-        )
-
-        await progress_msg.edit_text(summary_text, parse_mode="HTML")
-        await update.message.reply_document(document=file_bytes, caption=f"📄 Range Search ({start_id} to {end_id})")
+        await progress_msg.edit_text(f"✅ সার্চ সম্পন্ন হয়েছে! মোট {success_count} টি আইডির বিস্তারিত তথ্য দেখানো হয়েছে।", parse_mode="HTML")
         return
 
+    # ২. রেঞ্জ সার্চ লজিক (যেমন: 610100-610150)
+    range_match = re.match(r"^(\d+)\s*[-–—]\s*(\d+)$", raw_text)
+    if range_match:
+        start_id = int(range_match.group(1))
+        end_id = int(range_match.group(2))
+        
+        if start_id > end_id:
+            start_id, end_id = end_id, start_id
+
+        total_count = (end_id - start_id) + 1
+        if total_count > 50:
+            await update.message.reply_text("⚠️ রেঞ্জ সার্চের ক্ষেত্রে একসাথে সর্বোচ্চ ৫০টি আইডি দিন।")
+            return
+
+        progress_msg = await update.message.reply_text(f"🔄 রেঞ্জ <code>{start_id}</code> থেকে <code>{end_id}</code> চেক করা হচ্ছে...", parse_mode="HTML")
+        
+        for current_id in range(start_id, end_id + 1):
+            data = fetch_raw_details(str(current_id))
+            if data == "EXPIRED":
+                is_logged_in = False
+                await progress_msg.edit_text("⚠️ সেশনের মেয়াদ শেষ। আবার /start দিন।")
+                return
+            if data:
+                msg_text = format_single_client_msg(data, str(current_id))
+                mobile = data.get("Mobile")
+                reply_markup = None
+                if mobile:
+                    fmt_num = format_bd_phone(mobile)
+                    if fmt_num:
+                        reply_markup = InlineKeyboardMarkup([[
+                            InlineKeyboardButton("💬 WhatsApp", url=f"https://wa.me/{fmt_num}"),
+                            InlineKeyboardButton("✈️ Telegram", url=f"https://t.me/+{fmt_num}")
+                        ]])
+                await update.message.reply_text(msg_text, parse_mode="HTML", reply_markup=reply_markup)
+        
+        await progress_msg.edit_text(f"✅ রেঞ্জ সার্চ সম্পন্ন হয়েছে!")
+        return
+
+    # ৩. সিঙ্গেল আইডি বা মোবাইল নম্বর সার্চ লজিক
     input_text = raw_text
     if not input_text.isdigit():
-        await update.message.reply_text("সঠিক আইডি, মোবাইল নম্বর অথবা রেঞ্জ দিন।")
+        await update.message.reply_text("সঠিক আইডি, মোবাইল নম্বর অথবা লম্বালম্বিভাবে একাধিক আইডি দিন।")
         return
 
     wait_msg = await update.message.reply_text("তথ্য অনুসন্ধান করা হচ্ছে...")
@@ -921,7 +924,7 @@ async def comp_add_ticket_start(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def comp_submit_final(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
-    wait_msg = await update.message.reply_text("কমপ্লেইন সাবমিট করা হচ্ছে...")
+    wait_msg = await query.message.reply_text("কমপ্লেইন সাবমিট করা হচ্ছে...")
 
     try:
         session.post(COMPLAIN_URL, data={"details": text, "submit": "Submit"}, timeout=15)
