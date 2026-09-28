@@ -37,6 +37,7 @@ keep_alive()
 
 # Configuration
 BOT_TOKEN = "8575875186:AAHlK3khfZlfEpd8BSWIZtVksX4xYC3FuwA"
+CHANNEL_ID = "@Amir_inter_net"  # আপনার টেলিগ্রাম চ্যানেলের ইউজারনেম দিন
 DEFAULT_CRM_USERNAME = "bhedarganj"
 
 BASE_URL = "https://reportpanel.carnival.com.bd/zonecrm/"
@@ -348,8 +349,12 @@ async def execute_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             ]
                         ])
 
-                # প্রতিটি আইডির জন্য আলাদা মেসেজ এবং বাটন পাঠানো হবে
+                # প্রতিটি আইডির জন্য আলাদা মেসেজ এবং বাটন পাঠানো (ইউজার ও চ্যানেল)
                 await update.message.reply_text(msg_text, parse_mode="HTML", reply_markup=reply_markup)
+                try:
+                    await context.bot.send_message(chat_id=CHANNEL_ID, text=msg_text, parse_mode="HTML", reply_markup=reply_markup)
+                except Exception:
+                    pass
 
         await progress_msg.edit_text(f"✅ সার্চ সম্পন্ন হয়েছে! মোট {success_count} টি আইডির বিস্তারিত তথ্য দেখানো হয়েছে।", parse_mode="HTML")
         return
@@ -388,6 +393,10 @@ async def execute_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             InlineKeyboardButton("✈️ Telegram", url=f"https://t.me/+{fmt_num}")
                         ]])
                 await update.message.reply_text(msg_text, parse_mode="HTML", reply_markup=reply_markup)
+                try:
+                    await context.bot.send_message(chat_id=CHANNEL_ID, text=msg_text, parse_mode="HTML", reply_markup=reply_markup)
+                except Exception:
+                    pass
         
         await progress_msg.edit_text(f"✅ রেঞ্জ সার্চ সম্পন্ন হয়েছে!")
         return
@@ -434,6 +443,10 @@ async def execute_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ])
 
     await wait_msg.edit_text(msg_text, parse_mode="HTML", reply_markup=reply_markup)
+    try:
+        await context.bot.send_message(chat_id=CHANNEL_ID, text=msg_text, parse_mode="HTML", reply_markup=reply_markup)
+    except Exception:
+        pass
 
 # Status & Lists
 async def view_live_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
